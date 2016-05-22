@@ -1,0 +1,436 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:h="http://java.sun.com/jsf/html"
+      xmlns:p="http://primefaces.org/ui"
+      xmlns:f="http://java.sun.com/jsf/core">
+
+
+    <h:head>
+        <title>Prueba GDirections</title>
+        <style type="text/css">
+            html, body { height: 100%; margin: 0; padding: 0; }
+            #map { height: 100%; }
+
+            .controls {
+                margin-top: 10px;
+                border: 1px solid transparent;
+                border-radius: 2px 0 0 2px;
+                box-sizing: border-box;
+                -moz-box-sizing: border-box;
+                height: 32px;
+                outline: none;
+                box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+            }
+
+            /*            #desdeInputText,
+                        #hastaInputText {
+                            background-color: #fff;
+                            font-family: Roboto;
+                            font-size: 15px;
+                            font-weight: 300;
+                            margin-left: 12px;
+                            padding: 0 11px 0 13px;
+                            text-overflow: ellipsis;
+                            width: 200px;
+                        }*/
+
+            /*            #desdeInputText:focus,
+                        #hastaInputText:focus {
+                            border-color: #4d90fe;
+                        }*/
+
+            #mode-selector {
+                color: #fff;
+                background-color: #4d90fe;
+                margin-left: 12px;
+                padding: 5px 11px 0px 11px;
+            }
+
+            #mode-selector label {
+                font-family: Roboto;
+                font-size: 13px;
+                font-weight: 300;
+            }
+
+            /*	start styles for the ContextMenu	*/
+            .context_menu{
+                background-color:white;
+                border:1px solid gray;
+            }
+            .context_menu_item{
+                padding:3px 6px;
+            }
+            .context_menu_item:hover{
+                background-color:#CCCCCC;
+            }
+            .context_menu_separator{
+                background-color:gray;
+                height:1px;
+                margin:0;
+                padding:0;
+            }
+            #clearDirectionsItem, #getDirectionsItem{
+                display:none;
+            }
+            /*	end styles for the ContextMenu	*/
+
+        </style>
+
+    </h:head>
+
+    <h:body>
+        <h:form id="formTrayecto">
+            <p:remoteCommand name="passJSFtoMBeanRemoteCmnd"
+                             action="#{trayectoBean.getFromJs}"
+                             process="@this"
+                             update=":distanciaInputText, 
+                             :duracionInputText"/>
+        </h:form>
+
+        <p:panelGrid columns="5">
+
+            <p:outputLabel id="desdeLabel"
+                           value="Desde"
+                           for="desdeInputText"/>
+            <p:inputText id="desdeInputText"
+                         value="#{trayectoBean.trayecto.desde}"
+                         required="true"/>
+
+            <p:outputLabel id="hastaLabel"
+                           value="Hasta"
+                           for="hastaInputText"/>
+
+            <p:inputText id="hastaInputText"
+                         value="#{trayectoBean.trayecto.hasta}"
+                         required="true"/>
+
+        </p:panelGrid>
+
+        <p:commandButton id="buscarBtn"
+                         icon="ui-icon-search"
+                         value="Buscar"
+                         onclick="routeByLatLng();"/>
+
+        <div id="map" style="left: 0px; top: 0px; z-index: 2; width: 70%; height: 70%;"></div>
+
+
+        <p:fieldset id="navegacionFielset" legend="Datos de navegación">
+            <p:panelGrid columns="2">
+                <p:outputLabel id="distanciaLabel"
+                               value="Distancia: "
+                               for="distanciaInputText"/>
+
+                <p:inputText id="distanciaInputText"
+                             value="#{trayectoBean.trayecto.distancia}"
+                             disabled="#{true}"/>
+
+                <p:outputLabel id="duracionLabel"
+                               value="Duración estimada: "
+                               for="distanciaInputText"/>
+
+                <p:inputText id="duracionInputText"
+                             value="#{trayectoBean.trayecto.duracion}"
+                             disabled="#{true}"/>
+            </p:panelGrid>
+        </p:fieldset>
+    </h:body>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBW3Vf8GkB_-yM9E9Gruotbn9M3JZRrbeg&amp;signed_in=true&amp;libraries=places"
+    ></script>
+    <script type="text/javascript" src="js/ContextMenu.js"></script>
+
+    <script type='text/javascript'>
+                             //<![CDATA[ //]]>
+                             var addressOrigin = '10.002950434739359, -84.1106919122885';
+                             var addressDestination = '11.070736, -85.629308';
+                             function initMap() {
+
+                                 var travel_mode = google.maps.TravelMode.DRIVING;
+                                 var mapOptions = {};
+                                 mapOptions.zoom = 7;
+                                 mapOptions.center = new google.maps.LatLng(10, -84);
+                                 mapOptions.mapTypeId = google.maps.MapTypeId.ROADMAP;
+                                 var map = new google.maps.Map(document.getElementById('map'), mapOptions);
+                                 var directionsRendererOptions = {};
+                                 directionsRendererOptions.draggable = false;
+                                 directionsRendererOptions.hideRouteList = true;
+                                 directionsRendererOptions.suppressMarkers = false;
+                                 directionsRendererOptions.preserveViewport = false;
+                                 var directionsService = new google.maps.DirectionsService;
+                                 var directionsDisplay = new google.maps.DirectionsRenderer(directionsRendererOptions);
+                                 var geocoder = new google.maps.Geocoder;
+                                 directionsDisplay.setMap(map);
+                                 var origin_input = document.getElementById('desdeInputText');
+                                 var destination_input = document.getElementById('hastaInputText');
+                                 var origin_autocomplete = new google.maps.places.Autocomplete(origin_input);
+                                 origin_autocomplete.bindTo('bounds', map);
+                                 var destination_autocomplete = new google.maps.places.Autocomplete(destination_input);
+                                 destination_autocomplete.bindTo('bounds', map);
+                                 //	create the ContextMenuOptions object
+                                 var contextMenuOptions = {};
+                                 contextMenuOptions.classNames = {menu: 'context_menu', menuSeparator: 'context_menu_separator'};
+                                 //	create an array of ContextMenuItem objects
+                                 var menuItems = [];
+                                 menuItems.push({className: 'context_menu_item', eventName: 'directions_origin_click', id: 'directionsOriginItem', label: 'Directions from here'});
+                                 menuItems.push({className: 'context_menu_item', eventName: 'directions_destination_click', id: 'directionsDestinationItem', label: 'Directions to here'});
+                                 menuItems.push({className: 'context_menu_item', eventName: 'clear_directions_click', id: 'clearDirectionsItem', label: 'Clear directions'});
+                                 menuItems.push({className: 'context_menu_item', eventName: 'get_directions_click', id: 'getDirectionsItem', label: 'Get directions'});
+                                 //	a menuItem with no properties will be rendered as a separator
+                                 menuItems.push({});
+                                 menuItems.push({className: 'context_menu_item', eventName: 'zoom_in_click', label: 'Zoom in'});
+                                 menuItems.push({className: 'context_menu_item', eventName: 'zoom_out_click', label: 'Zoom out'});
+                                 menuItems.push({});
+                                 menuItems.push({className: 'context_menu_item', eventName: 'center_map_click', label: 'Center map here'});
+                                 contextMenuOptions.menuItems = menuItems;
+                                 //	create the ContextMenu object
+                                 var contextMenu = new ContextMenu(map, contextMenuOptions);
+                                 //	display the ContextMenu on a Map right click
+                                 google.maps.event.addListener(map, 'rightclick', function(mouseEvent) {
+                                     contextMenu.show(mouseEvent.latLng);
+                                 });
+                                 //	create markers to show directions origin and destination
+                                 //	both are not visible by default
+                                 var markerOptions = {};
+                                 markerOptions.icon = 'http://www.google.com/intl/en_ALL/mapfiles/markerA.png';
+                                 markerOptions.map = null;
+                                 markerOptions.position = new google.maps.LatLng(0, 0);
+                                 markerOptions.title = 'Directions origin';
+                                 var originMarker = new google.maps.Marker(markerOptions);
+                                 markerOptions.icon = 'http://www.google.com/intl/en_ALL/mapfiles/markerB.png';
+                                 markerOptions.title = 'Directions destination';
+                                 var destinationMarker = new google.maps.Marker(markerOptions);
+                                 //	listen for the ContextMenu 'menu_item_selected' event
+                                 google.maps.event.addListener(contextMenu, 'menu_item_selected', function(latLng, eventName) {
+                                     //	latLng is the position of the ContextMenu
+                                     //	eventName is the eventName defined for the clicked ContextMenuItem in the ContextMenuOptions
+                                     switch (eventName) {
+                                         case 'directions_origin_click':
+                                             originMarker.setPosition(latLng);
+                                             if (!originMarker.getMap()) {
+                                                 originMarker.setMap(map);
+                                             }
+                                             addressOrigin = quitaParantesis(originMarker.getPosition() + '');
+                                            
+                                             geocodeLatLng(geocoder, map, addressOrigin, function(place) {
+                                                 placeOrigin = place;
+                                                 origin_input.value = placeOrigin.formatted_address;
+                                                 expandViewportToFitPlace(map, place);
+                                             });
+                                             break;
+                                         case 'directions_destination_click':
+                                             destinationMarker.setPosition(latLng);
+                                             if (!destinationMarker.getMap()) {
+                                                 destinationMarker.setMap(map);
+                                             }
+                                             addressDestination = quitaParantesis(destinationMarker.getPosition() + '');
+                                           
+                                             geocodeLatLng(geocoder, map, addressDestination, function(place) {
+                                                 placeDestination = place;
+                                                 destination_input.value = placeDestination.formatted_address;
+                                                 expandViewportToFitPlace(map, place);
+                                             });
+                                             break;
+                                         case 'clear_directions_click':
+                                             directionsDisplay.setMap(null);
+                                             addressOrigin = '';
+                                             addressDestination = '';
+                                             origin_input.value = '';
+                                             destination_input.value = '';
+                                             //	set CSS styles to defaults
+                                             document.getElementById('clearDirectionsItem').style.display = '';
+                                             document.getElementById('directionsDestinationItem').style.display = '';
+                                             document.getElementById('directionsOriginItem').style.display = '';
+                                             document.getElementById('getDirectionsItem').style.display = '';
+                                             break;
+                                         case 'get_directions_click':
+                                             //<![CDATA[ 
+                                             if (originMarker.getPosition() && destinationMarker.getPosition()) {
+                                                 //]]>  
+
+
+                                                 routeByLatLng(addressOrigin, addressDestination, travel_mode,
+                                                         directionsService, directionsDisplay, map);
+                                                 originMarker.setMap(null);
+                                                 destinationMarker.setMap(null);
+                                             }
+                                             break;
+                                         case 'zoom_in_click':
+                                             map.setZoom(map.getZoom() + 1);
+                                             break;
+                                         case 'zoom_out_click':
+                                             map.setZoom(map.getZoom() - 1);
+                                             break;
+                                         case 'center_map_click':
+                                             map.panTo(latLng);
+                                             break;
+                                     }
+                                     //<![CDATA[ 
+                                     if (originMarker.getMap() && destinationMarker.getMap() && document.getElementById('getDirectionsItem').style.display === '') {
+                                         //	display the 'Get directions' menu item if it is not visible and both directions origin and destination have been selected
+                                         document.getElementById('getDirectionsItem').style.display = 'block';
+                                     }
+                                     //]]>
+                                 });
+                                 function expandViewportToFitPlace(map, place) {
+
+
+                                     if (place.geometry.viewport) {
+                                         map.fitBounds(place.geometry.viewport);
+                                     } else {
+                                         map.setCenter(place.geometry.location);
+                                         map.setZoom(17);
+                                     }
+                                 }
+
+                                 var latLngOrigin = addressOrigin;
+                                 var latLngDestination = addressDestination;
+                                 var placeOrigin;
+                                 var placeDestination;
+                                 var lugarOrigen;
+                                 var distritoOrigen;
+                                 var lugarDestino;
+                                 var distritoDestino;
+                                 //Carga el trayecto en el mapa en caso de que ya exista uno guardado
+                                 //<![CDATA[ 
+                                 if (addressOrigin != '' && addressDestination != '') {
+                                     //]]>        
+                                     geocodeLatLng(geocoder, map, latLngOrigin, function(place) {
+                                         placeOrigin = place;
+                                         geocodeLatLng(geocoder, map, latLngDestination, function(place) {
+                                             placeDestination = place;
+                                             origin_input.value = placeOrigin.formatted_address;
+                                             destination_input.value = placeDestination.formatted_address;
+                                             routeByLatLng(addressOrigin, addressDestination, travel_mode,
+                                                     directionsService, directionsDisplay, map);
+                                         });
+                                     });
+                                 } else {
+                                     geocodeLatLng(geocoder, map, latLngOrigin, function(place) {
+                                         placeOrigin = place;
+                                         origin_input.value = placeOrigin.formatted_address;
+                                         expandViewportToFitPlace(map, place);
+                                     });
+                                 }
+
+//AUTOCOMPLETE ORIGEN
+                                 origin_autocomplete.addListener('place_changed', function() {
+                                     var place = origin_autocomplete.getPlace();
+                                     if (!place.geometry) {
+                                         window.alert("Autocomplete's returned place contains no geometry");
+                                         return;
+                                     }
+                                     expandViewportToFitPlace(map, place);
+                                     // If the place has a geometry, store its place ID and route if we have
+                                     // the other place ID
+                                     addressOrigin = place.geometry.location;
+                                     originMarker.setPosition(addressOrigin);
+                                     if (!originMarker.getMap()) {
+                                         originMarker.setMap(map);
+                                     }
+                                     //<![CDATA[ 
+                                     if (addressOrigin != '' && addressDestination != '') {
+                                         //]]>      
+                                         routeByLatLng(addressOrigin, addressDestination, travel_mode,
+                                                 directionsService, directionsDisplay, map);
+                                         //Desaparece los marcadores "A" y "B"-----------------------------------------
+                                         originMarker.setMap(null);
+                                         destinationMarker.setMap(null);
+                                         //----------------------------------------------------------------------------
+
+                                     }
+
+                                 });
+//AUTOCOMPLETE DESTINO
+                                 destination_autocomplete.addListener('place_changed', function() {
+                                     var place = destination_autocomplete.getPlace();
+                                     if (!place.geometry) {
+                                         window.alert("Autocomplete's returned place contains no geometry");
+                                         return;
+                                     }
+                                     expandViewportToFitPlace(map, place);
+                                     // If the place has a geometry, store its place ID and route if we have
+                                     // the other place ID
+                                     addressDestination = place.geometry.location;
+                                     destinationMarker.setPosition(addressDestination);
+                                     if (!destinationMarker.getMap()) {
+                                         destinationMarker.setMap(map);
+                                     }
+                                     //<![CDATA[ 
+                                     if (addressOrigin != '' && addressDestination != '') {
+                                         //]]>      
+                                         routeByLatLng(addressOrigin, addressDestination, travel_mode,
+                                                 directionsService, directionsDisplay, map);
+                                         //Desaparece los marcadores "A" y "B"-----------------------------------------
+                                         originMarker.setMap(null);
+                                         destinationMarker.setMap(null);
+                                         //----------------------------------------------------------------------------
+
+                                     }
+
+
+                                 });
+                             }//FIN INITMAP FUNCTION
+
+
+                             function routeByLatLng(origin_latLng, destination_latLng, travel_mode,
+                                     directionsService, directionsDisplay, map) {
+                                 var directionsRequest = {};
+                                 directionsRequest.destination = destination_latLng;
+                                 directionsRequest.origin = origin_latLng;
+                                 directionsRequest.travelMode = travel_mode;
+                                 alert("ORIGEN " + origin_latLng);
+                                 alert("DESTINO " + destination_latLng);
+                                 directionsService.route(directionsRequest, function(response, status) {
+                                     if (status === google.maps.DirectionsStatus.OK) {
+                                         directionsDisplay.setDirections(response);
+                                         directionsDisplay.setMap(map);
+                                         var point = response.routes[ 0 ].legs[ 0 ];
+                                         var duration = point.duration.text;
+                                         var distance = point.distance.text;
+                                         sendIdToJsf(duration, distance);
+                                         //Desaparece las opciones del menú "origen", "destino" y "obtener direccion"--
+                                         document.getElementById('clearDirectionsItem').style.display = 'block';
+                                         document.getElementById('directionsDestinationItem').style.display = 'none';
+                                         document.getElementById('directionsOriginItem').style.display = 'none';
+                                         document.getElementById('getDirectionsItem').style.display = 'none';
+                                         //-----------------------------------------------------------------------------
+                                     } else {
+                                         window.alert('Directions request failed due to ' + status);
+                                     }
+                                 });
+                             }
+
+                             function sendIdToJsf(duracion, distancia) {
+                                 passJSFtoMBeanRemoteCmnd([
+                                     {name: 'duracion', value: duracion},
+                                     {name: 'distancia', value: distancia}]);
+                             }
+                             ;
+                             function geocodeLatLng(geocoder, map, latLng, place) {
+                                 var input = latLng;
+                                 var latlngStr = input.split(',', 2);
+                                 var latlng = {lat: parseFloat(latlngStr[0]), lng: parseFloat(latlngStr[1])};
+                                 geocoder.geocode({'location': latlng}, function(results, status) {
+                                     if (status === google.maps.GeocoderStatus.OK) {
+                                         if (results[1]) {
+                                             map.setZoom(11);
+                                             place(results[1]);
+                                         } else {
+                                             window.alert('No results found');
+                                         }
+                                     } else {
+                                         window.alert('Geocoder failed due to: ' + status);
+                                     }
+                                 });
+                             }
+
+                             function quitaParantesis(coordenadas) {
+                                 coordenadas = coordenadas.replace("(", "");
+                                 coordenadas = coordenadas.replace(")", "");
+                                 return coordenadas;
+                             }
+
+                             google.maps.event.addDomListener(window, 'load', initMap);
+    </script>
+
+</html>
